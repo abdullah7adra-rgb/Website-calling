@@ -1,138 +1,83 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MilanoVoIP.com</title>
+    <title>MilanoVoIP Local</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; background: #0f0f0f; color: white; margin: 0; padding: 20px; }
-        h2 { color: #00d1b2; margin-bottom: 20px; letter-spacing: 1px; }
+        body { font-family: sans-serif; background: #1a1a1a; color: white; text-align: center; padding: 20px; }
+        .box { background: #2a2a2a; padding: 25px; border-radius: 15px; border: 1px solid #444; }
         
-        /* Setup Box Styles */
-        .setup-box { background: #1a1a1a; padding: 30px; border-radius: 15px; box-shadow: 0 8px 32px rgba(0,0,0,0.3); text-align: center; border: 1px solid #333; width: 100%; max-width: 400px; transition: 0.3s; }
-        input { padding: 12px; border-radius: 8px; border: 1px solid #444; width: 80%; background: #252525; color: white; font-size: 16px; margin-bottom: 15px; outline: none; }
-        input:focus { border-color: #00d1b2; box-shadow: 0 0 5px #00d1b2; }
-        
-        /* Button Styles */
-        button { padding: 12px 20px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold; transition: 0.2s; margin: 5px; font-size: 14px; }
-        .join-btn { background: #00d1b2; color: white; width: 88%; }
-        .join-btn:hover { background: #00b89c; }
-        .control-btn { background: #333; color: white; border: 1px solid #444; }
-        .control-btn:hover { background: #444; }
-        .leave-btn { background: #ff3860; color: white; }
-        .leave-btn:hover { background: #e03154; }
-        .active-off { background: #ff3860 !important; border-color: #ff3860; }
+        /* THE INTERACTABLE INPUT */
+        input { 
+            width: 80%; 
+            padding: 15px; 
+            margin: 10px 0; 
+            border-radius: 8px; 
+            border: 2px solid #00d1b2; 
+            font-size: 18px;
+            background: #fff;
+            color: #000;
+        }
 
-        /* Video Grid */
-        #video-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; width: 100%; max-width: 1200px; margin-top: 20px; }
-        video { width: 100%; border-radius: 12px; background: #000; transform: scaleX(-1); border: 2px solid #333; }
+        button { padding: 15px 25px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; margin: 5px; }
+        .join { background: #00d1b2; color: white; width: 85%; }
+        .mute { background: #555; color: white; }
+        .hangup { background: #ff3860; color: white; }
         
-        #room-display { margin-top: 10px; font-size: 1.2rem; display: none; color: #888; }
+        #video-grid { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 20px; }
+        video { width: 100%; border-radius: 10px; background: #000; }
     </style>
 </head>
 <body>
 
     <h2>MilanoVoIP.com</h2>
 
-    <div class="setup-box" id="setup-area">
-        <input type="text" id="room-input" placeholder="Type Room Name (e.g. 7077)" autofocus>
-        <button class="join-btn" id="join-button" onclick="joinRoom()">Start / Join Meeting</button>
-        <p style="font-size: 0.8rem; color: #666; margin-top: 10px;">Type a name and press Enter to start</p>
+    <div id="setup" class="box">
+        <p>Enter Room Name to Start:</p>
+        <input type="text" id="roomInput" placeholder="Ex: 7077" autofocus>
+        <button class="join" onclick="startCall()">JOIN MEETING</button>
     </div>
-
-    <div id="room-display">Connected to Room: <span id="current-room" style="color: white;"></span></div>
 
     <div id="video-grid"></div>
 
-    <div id="controls-area" style="display:none; margin-top: 25px; background: #1a1a1a; padding: 15px; border-radius: 50px; border: 1px solid #333;">
-        <button class="control-btn" id="mute-btn" onclick="toggleAudio()">Mute Mic</button>
-        <button class="control-btn" id="video-btn" onclick="toggleVideo()">Stop Video</button>
-        <button class="control-btn" onclick="copyRoomLink()">Copy Invite Link</button>
-        <button class="leave-btn" onclick="leaveCall()">Hang Up</button>
+    <div id="controls" style="display:none; margin-top:20px;">
+        <button class="mute" id="micBtn" onclick="toggleMic()">Mute Mic</button>
+        <button class="mute" id="camBtn" onclick="toggleCam()">Stop Video</button>
+        <button class="hangup" onclick="location.reload()">End Call</button>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        const socket = io('/');
-        const videoGrid = document.getElementById('video-grid');
-        const myVideo = document.createElement('video');
-        myVideo.muted = true;
-
         let myStream;
-        const peers = {};
-        const config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+        const socket = io();
 
-        // Allow pressing "Enter" key to join
-        document.getElementById('room-input').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') joinRoom();
-        });
+        function startCall() {
+            const room = document.getElementById('roomInput').value || "7077";
+            document.getElementById('setup').style.display = 'none';
+            document.getElementById('controls').style.display = 'block';
 
-        function joinRoom() {
-            const roomName = document.getElementById('room-input').value.trim() || "7077";
-            
-            // UI Changes
-            document.getElementById('setup-area').style.display = 'none';
-            document.getElementById('controls-area').style.display = 'block';
-            document.getElementById('room-display').style.display = 'block';
-            document.getElementById('current-room').innerText = roomName;
-
-            navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(stream => {
+            navigator.mediaDevices.getUserMedia({video: true, audio: true}).then(stream => {
                 myStream = stream;
-                addVideoStream(myVideo, stream);
+                const v = document.createElement('video');
+                v.muted = true;
+                v.srcObject = stream;
+                v.onloadedmetadata = () => v.play();
+                document.getElementById('video-grid').append(v);
 
-                socket.emit('join-room', roomName, socket.id);
-
-                socket.on('user-connected', userId => {
-                    const pc = new RTCPeerConnection(config);
-                    peers[userId] = pc;
-                    stream.getTracks().forEach(track => pc.addTrack(track, stream));
-                    pc.ontrack = e => {
-                        const v = document.createElement('video');
-                        addVideoStream(v, e.streams[0]);
-                    };
-                    pc.onicecandidate = e => {
-                        if (e.candidate) socket.emit('signal', { to: userId, candidate: e.candidate });
-                    };
-                });
-            }).catch(err => {
-                alert("Camera access required!");
-                window.location.reload();
+                socket.emit('join-room', room, socket.id);
             });
         }
 
-        function toggleAudio() {
-            const enabled = myStream.getAudioTracks()[0].enabled;
-            myStream.getAudioTracks()[0].enabled = !enabled;
-            document.getElementById('mute-btn').innerText = !enabled ? "Mute Mic" : "Unmute Mic";
-            document.getElementById('mute-btn').classList.toggle('active-off');
+        function toggleMic() {
+            const track = myStream.getAudioTracks()[0];
+            track.enabled = !track.enabled;
+            document.getElementById('micBtn').innerText = track.enabled ? "Mute Mic" : "Unmute Mic";
         }
 
-        function toggleVideo() {
-            const enabled = myStream.getVideoTracks()[0].enabled;
-            myStream.getVideoTracks()[0].enabled = !enabled;
-            document.getElementById('video-btn').innerText = !enabled ? "Stop Video" : "Start Video";
-            document.getElementById('video-btn').classList.toggle('active-off');
-        }
-
-        function copyRoomLink() {
-            const room = document.getElementById('current-room').innerText;
-            const dummy = document.createElement('input');
-            document.body.appendChild(dummy);
-            dummy.value = window.location.href.split('?')[0] + "?room=" + room;
-            dummy.select();
-            document.execCommand('copy');
-            document.body.removeChild(dummy);
-            alert("Invite link copied to clipboard!");
-        }
-
-        function leaveCall() {
-            window.location.reload();
-        }
-
-        function addVideoStream(video, stream) {
-            video.srcObject = stream;
-            video.addEventListener('loadedmetadata', () => video.play());
-            videoGrid.append(video);
+        function toggleCam() {
+            const track = myStream.getVideoTracks()[0];
+            track.enabled = !track.enabled;
+            document.getElementById('camBtn').innerText = track.enabled ? "Stop Video" : "Start Video";
         }
     </script>
 </body>
